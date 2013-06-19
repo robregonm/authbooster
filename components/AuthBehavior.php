@@ -3,7 +3,7 @@
  * AuthBehavior class file.
  * @author Ricardo Obregón <ricardo@obregon.co>
  * @author Christoffer Niska <ChristofferNiska@gmail.com>
- * @copyright Copyright &copy; Ricardo Obregón 2012-
+ * @copyright Copyright &copy; Christoffer Niska 2012-
  * @license http://www.opensource.org/licenses/bsd-license.php New BSD License
  * @package auth.components
  */
@@ -16,6 +16,72 @@
 class AuthBehavior extends CBehavior
 {
     /**
+     * @var array cached relations between the auth items.
+     */
+    private $_items = array();
+
+    /**
+     * Return thee parents and children of specific item or all items
+     * @param string $itemName name of the item.
+     * @return array
+     */
+    public function getItems($itemName=null)
+    {
+        if($itemName && isset($this->_items[$itemName]))
+            return $this->_items[$itemName];
+
+        return $this->_items;
+    }
+
+    /**
+     * Sets the parents of specific item
+     * @param string $itemName name of the item.
+     * @param array $parents
+     */
+    public function setItemParents($itemName, $parents)
+    {
+        $this->_items[$itemName]['parents'] = $parents;
+    }
+
+    /**
+     * Sets the children of specific item
+     * @param string $itemName name of the item.
+     * @param array $children
+     */
+    public function setItemChildren($itemName, $children)
+    {
+        $this->_items[$itemName]['children'] = $children;
+    }
+
+    /**
+     * Gets the parents of specific item if exists
+     * @param string $itemName name of the item.
+     * @return array
+     */
+    public function getParents($itemName)
+    {
+        $items = $this->getItems($itemName);
+        if(isset($items['parents']))
+            return $items['parents'];
+
+        return array();
+    }
+
+    /**
+     * Gets the children of specific item if exists
+     * @param string $itemName name of the item.
+     * @return array
+     */
+    public function getChildren($itemName)
+    {
+        $items = $this->getItems($itemName);
+        if(isset($items['children']))
+            return $items['children'];
+
+        return array();
+    }
+
+    /**
      * Returns whether the given item has a specific parent.
      * @param string $itemName name of the item.
      * @param string $parentName name of the parent.
@@ -23,8 +89,11 @@ class AuthBehavior extends CBehavior
      */
     public function hasParent($itemName, $parentName)
     {
-        $permissions = $this->getItemPermissions($parentName);
-        return isset($permissions[$itemName]);
+        $parents = $this->getParents($itemName);
+        if(in_array($parentName, $parents)) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -35,8 +104,11 @@ class AuthBehavior extends CBehavior
      */
     public function hasChild($itemName, $childName)
     {
-        $permissions = $this->getItemPermissions($itemName);
-        return isset($permissions[$childName]);
+        $children = $this->getChildren($itemName);
+        if(in_array($childName, $children)) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -64,39 +136,85 @@ class AuthBehavior extends CBehavior
     }
 
     /**
-     * Returns all ancestors for the given item recursively.
+     * Returns flat array of all ancestors.
      * @param string $itemName name of the item.
-     * @param array|null $permissions permissions to process.
      * @return array the ancestors.
      */
-    public function getAncestors($itemName, $permissions = null)
+    public function getAncestors($itemName)
+    {
+        $ancestors = $this->getAncestor($itemName);
+        return $this->flattenPermissions($ancestors);
+    }
+
+    /**
+     * Returns all ancestors for the given item recursively.
+     * @param string $itemName name of the item.
+     * @param integer $depth current depth.
+     * @return array the ancestors.
+     */
+    public function getAncestor($itemName, $depth = 0)
     {
         $ancestors = array();
-
-        if ($permissions === null) {
-            $permissions = $this->getPermissions();
+        $parents = $this->getParents($itemName);
+        if(empty($parents)){
+            $parents = $this->owner->db->createCommand()
+                ->select('parent')
+                ->from($this->owner->itemChildTable)
+                ->where('child=:child', array(':child'=>$itemName))
+                ->queryColumn();
+            $this->setItemParents($itemName, $parents);
         }
 
-        foreach ($permissions as $childName => $child) {
-            if ($this->hasDescendant($childName, $itemName)) {
-                $ancestors[$childName] = $child;
-            }
-
-            $ancestors = array_merge($ancestors, $this->getAncestors($itemName, $child['children']));
+        foreach($parents as $parent){
+            $ancestors[] = array(
+                'name' => $parent,
+                'item' => $this->owner->getAuthItem($parent),
+                'parents' => $this->getAncestor($parent, $depth + 1),
+                'depth' => $depth
+            );
         }
-
         return $ancestors;
     }
 
     /**
-     * Returns all the descendants for the given item recursively.
+     * Returns flat array of all the descendants.
      * @param string $itemName name of the item.
      * @return array the descendants.
      */
     public function getDescendants($itemName)
     {
-        $itemPermissions = $this->getItemPermissions($itemName);
-        return $this->flattenPermissions($itemPermissions);
+        $descendants = $this->getDescendant($itemName);
+        return $this->flattenPermissions($descendants);
+    }
+
+    /**
+     * Returns all the descendants for the given item recursively.
+     * @param string $itemName name of the item.
+     * @param integer $depth current depth.
+     * @return array the descendants.
+     */
+    public function getDescendant($itemName, $depth = 0)
+    {
+        $descendants = array();
+        $children = $this->getChildren($itemName);
+        if(empty($children)){
+            $children = $this->owner->db->createCommand()
+                ->select('child')
+                ->from($this->owner->itemChildTable)
+                ->where('parent=:parent', array(':parent'=>$itemName))
+                ->queryColumn();
+            $this->setItemChildren($itemName, $children);
+        }
+
+        foreach($children as $child){
+            $descendants[$child] = array(
+                'name' => $child,
+                'item' => $this->owner->getAuthItem($child),
+                'children' => $this->getDescendant($child, $depth + 1),
+                'depth' => $depth,
+            );
+        }
+        return $descendants;
     }
 
     /**
@@ -109,15 +227,15 @@ class AuthBehavior extends CBehavior
     {
         $permissions = array();
 
-        if ($items === null) {
+        if ($items === null)
             $items = $this->owner->getAuthItems();
-        }
 
-        foreach ($items as $itemName => $item) {
+        foreach ($items as $itemName => $item)
+        {
             $permissions[$itemName] = array(
                 'name' => $itemName,
                 'item' => $item,
-                'children' => $this->getPermissions($item->getChildren(), $depth + 1),
+                'children' => $this->getPermissions($item, $depth + 1),
                 'depth' => $depth,
             );
         }
@@ -148,10 +266,10 @@ class AuthBehavior extends CBehavior
         $items = $this->getPermissions();
         $flat = $this->flattenPermissions($items);
 
-        foreach ($flat as $itemName => $item) {
-            if (in_array($itemName, $names)) {
+        foreach ($flat as $itemName => $item)
+        {
+            if (in_array($itemName, $names))
                 $permissions[$itemName] = $item;
-            }
         }
 
         return $permissions;
@@ -165,13 +283,22 @@ class AuthBehavior extends CBehavior
     public function flattenPermissions($permissions)
     {
         $flattened = array();
-        foreach ($permissions as $itemName => $itemPermissions) {
-            $children = $itemPermissions['children'];
-            unset($itemPermissions['children']); // not needed in a flat tree
+        foreach ($permissions as $itemName => $itemPermissions)
+        {
             $flattened[$itemName] = $itemPermissions;
-            $flattened = array_merge($flattened, $this->flattenPermissions($children));
-        }
 
+            if(isset($itemPermissions['children'])) {
+                $children = $itemPermissions['children'];
+                unset($itemPermissions['children']); // not needed in a flat tree
+                $flattened = array_merge($flattened, $this->flattenPermissions($children));
+            }
+
+            if(isset($itemPermissions['parents'])) {
+                $parents = $itemPermissions['parents'];
+                unset($itemPermissions['parents']);
+                $flattened = array_merge($flattened, $this->flattenPermissions($parents));
+            }
+        }
         return $flattened;
     }
 }
