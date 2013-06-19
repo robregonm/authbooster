@@ -8,7 +8,7 @@
  * @package auth.components
  */
 
-Yii::import('auth.components.ICachedAuthManager');
+require_once(__DIR__ . DIRECTORY_SEPARATOR . 'ICachedAuthManager.php');
 
 /**
  * Caching layer for CDbAuthManager that allows for caching access checks.
