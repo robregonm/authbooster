@@ -119,3 +119,10 @@ Translations should be placed in the messages folder under a folder named accord
 ### Note
 
 Note: This version DOES NOT require yiistrap!!
+
+###ChangeLog
+
+####Version 1.0.1
+* 2013-06-19: AuthBehavior optimizations to reduce number of queries. (Thanks to @kachar)
+* 2013-06-13: Fixed minor bug when CachedDbAuthManager is used by a child class located outside of auth module.
+* 2013-05-23: Added Turkish translation (Thanks to @rterzi)
