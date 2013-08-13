@@ -48,6 +48,19 @@ class AuthWebUser extends CWebUser
     }
 
     /**
+     * Performs access check for this user. 
+     * Ignores any administrator status.
+     * @param string $operation the name of the operation that need access check.
+     * @param array $params name-value pairs that would be passed to business rules associated
+     * with the tasks and roles assigned to the user.
+     * @param boolean $allowCaching whether to allow caching the result of access check.
+     * @return boolean whether the operations can be performed by this user.
+     */
+    public function checkRawAccess($operation, $params = array(), $allowCaching = true) {
+        return parent::checkAccess($operation, $params, $allowCaching);
+    }
+
+    /**
      * Performs access check for this user.
      * @param string $operation the name of the operation that need access check.
      * @param array $params name-value pairs that would be passed to business rules associated
@@ -60,7 +73,7 @@ class AuthWebUser extends CWebUser
         if ($this->getIsAdmin()) {
             return true;
         }
-
-        return parent::checkAccess($operation, $params, $allowCaching);
+        //fallback to regular permission check
+        return $this->checkRawAccess($operation, $params, $allowCaching);
     }
 }
